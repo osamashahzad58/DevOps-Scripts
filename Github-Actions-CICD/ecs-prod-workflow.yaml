@@ -1,0 +1,92 @@
+name: Deploy to Amazon ECS
+
+on:
+  push:
+    branches: [main]
+
+env:
+  AWS_REGION: ${{ secrets.AWS_ECR_REGION }}
+  ECS_CLUSTER: Tomi-Trustless-Reward-System-Cluster
+  ECR_REPOSITORY: tomi-trustless-reward-system-backend
+  ECS_SERVICE: backend-service
+  CONTAINER_NAME: backend
+  TASK_DEFINITION: tomi-trustless-reward-system-backend-td
+
+jobs:
+  deploy:
+    name: Deploying to Production
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Make environment files
+        run: |
+          cat << EOF > .env
+            NODE_ENV=${{ secrets.NODE_ENV}}
+            PORT=${{ secrets.PORT}}
+            BASE_URL=${{ secrets.BASE_URL}}
+            JWT_ACCESS_TOKEN_SECRET=${{ secrets.JWT_ACCESS_TOKEN_SECRET}}
+            JWT_REFRESH_TOKEN_SECRET=${{ secrets.JWT_REFRESH_TOKEN_SECRET}}
+            REDIS_HOST=${{ secrets.REDIS_HOST}}
+            DATABASE_NAME=${{ secrets.DATABASE_NAME}}
+            DATABASE_PASSWORD=${{ secrets.DATABASE_PASSWORD}}
+            DATABASE_USERNAME=${{ secrets.DATABASE_USERNAME}}
+            DATABASE_HOST=${{ secrets.DATABASE_HOST}}
+            DATABASE_DIALECT=${{ secrets.DATABASE_DIALECT}}
+            DATABASE_POOL=${{ secrets.DATABASE_POOL}}
+            DATABASE_PORT=${{ secrets.DATABASE_PORT}}
+            DATABASE_DBREADER=${{ secrets.DATABASE_DBREADER}}
+            DATABASE_DBWRITER=${{ secrets.DATABASE_DBWRITER}}
+            AWS_ACCESS_KEY=${{ secrets.AWS_ACCESS_KEY}}
+            AWS_ACCESS_SECRET=${{ secrets.AWS_ACCESS_SECRET}}
+            AWS_S3_BUCKET_NAME=${{ secrets.AWS_S3_BUCKET_NAME}}
+            AWS_S3_BUCKET_REGION=${{ secrets.AWS_S3_BUCKET_REGION}}
+            AWS_S3_CLOUD_FRONT_URL=${{ secrets.AWS_S3_CLOUD_FRONT_URL}}
+            AWS_ECR_ACCESS_KEY_ID=${{ secrets.AWS_ECR_ACCESS_KEY_ID}}
+            AWS_ECR_SECRET_ACCESS_KEY=${{ secrets.AWS_ECR_SECRET_ACCESS_KEY}}
+            AWS_ECR_REGION=${{ secrets.AWS_ECR_REGION}}
+            PRIVATE_KEY=${{ secrets.PRIVATE_KEY}}
+            RPC_URL=${{ secrets.RPC_URL}}
+            CONTRACT_ADDRESS=${{ secrets.CONTRACT_ADDRESS}}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ECR_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_ECR_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_ECR_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build, tag, and push image to Amazon ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: latest
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Download task definition
+        run: aws ecs describe-task-definition --task-definition ${{ env.TASK_DEFINITION }} --query taskDefinition > ${{ env.TASK_DEFINITION }}.json
+
+      - name: Fill in the new image ID in the Amazon ECS task definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: ${{ env.TASK_DEFINITION }}.json
+          container-name: ${{ env.CONTAINER_NAME }}
+          image: ${{ steps.build-image.outputs.image }}
+
+      - name: Deploy Amazon ECS task definition
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
