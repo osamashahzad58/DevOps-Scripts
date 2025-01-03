@@ -1,0 +1,32 @@
+name: Deploying final_mainnet Brach
+
+on:
+  push:
+    branches:
+      - finnal_mainnet
+jobs:
+  build:
+
+    runs-on: [self-hosted, tomi-unstopable-domain] 
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Install node 16
+        run: nvm install 16
+
+      - name: use Node Version 16
+        run:  nvm use 16
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Build application
+        run: npm run build
+
+      - name: Install Serve 
+        run: npm install -g serve
+
+      - name: Start the application
+        run: pm2 start "serve -s build -l 3001" --name Tomi-Unstopable-Domain
