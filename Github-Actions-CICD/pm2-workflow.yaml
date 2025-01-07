@@ -12,13 +12,13 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
 
-      - name: Install node 16
-        run: nvm install 16
-
-      - name: use Node Version 16
-        run:  nvm use 16
-
+          
       - name: Install dependencies
         run: npm install --legacy-peer-deps
 
