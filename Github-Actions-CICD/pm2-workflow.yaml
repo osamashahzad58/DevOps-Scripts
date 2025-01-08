@@ -1,32 +1,37 @@
-name: Deploying final_mainnet Brach
+name: Deploying Staging Branch
 
 on:
   push:
     branches:
-      - finnal_mainnet
+      - staging
 jobs:
   build:
 
-    runs-on: [self-hosted, tomi-unstopable-domain] 
+    runs-on: [self-hosted, gems-be-vm] 
+
+    env:
+      PM2_PROCESS_NAME: "Gems-Community-Project-Staging"
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
+        with:
+          clean: False
         
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '20'
 
-          
       - name: Install dependencies
-        run: npm install --legacy-peer-deps
+        run: npm install
 
-      - name: Build application
-        run: npm run build
-
-      - name: Install Serve 
-        run: npm install -g serve
-
-      - name: Start the application
-        run: pm2 start "serve -s build -l 3001" --name Tomi-Unstopable-Domain
+      - name: Start or Reload the Application
+        run: |
+          if pm2 list | grep -q "$PM2_PROCESS_NAME"; then
+            echo "Process $PM2_PROCESS_NAME exists. Reloading..."
+            pm2 reload "$PM2_PROCESS_NAME"
+          else
+            echo "Process $PM2_PROCESS_NAME does not exist. Starting..."
+            pm2 start "npm start" --name "$PM2_PROCESS_NAME"
+          fi
